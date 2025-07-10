@@ -180,33 +180,79 @@ function analyzeResults(sku, resolve) {
                        el.offsetHeight > 0 && // Element is visible
                        el.offsetWidth > 0;
             });
-            if (actualProducts.length > 0) {
-                // Try to extract the first product link
-                let link = null;
-                for (let el of actualProducts) {
-                    // Try .product-item-info a.product-item-photo first
-                    let a = el.querySelector('a.product-item-photo');
-                    if (!a) {
-                        // Try .product-item-link (the name link)
-                        a = el.querySelector('a.product-item-link');
-                    }
+            // Try to find the product element that matches the SKU
+            let link = null;
+            let found = false;
+            for (let el of actualProducts) {
+                // Try .product-item-info a.product-item-photo first
+                let a = el.querySelector('a.product-item-photo');
+                if (!a) {
+                    // Try .product-item-link (the name link)
+                    a = el.querySelector('a.product-item-link');
+                }
+                // Check if SKU is in href, text, or HTML
+                if (a && a.href && a.href.toLowerCase().includes(sku.toLowerCase())) {
+                    link = a.href;
+                    found = true;
+                    break;
+                } else if (el.textContent.toLowerCase().includes(sku.toLowerCase())) {
                     if (a && a.href) {
                         link = a.href;
+                        found = true;
+                        break;
+                    }
+                } else if (el.innerHTML.toLowerCase().includes(sku.toLowerCase())) {
+                    if (a && a.href) {
+                        link = a.href;
+                        found = true;
                         break;
                     }
                 }
-                console.log(`✅ SKU ${sku}: Found ${actualProducts.length} product(s)`);
-                resolve({ enabled: true, message: `Found ${actualProducts.length} product(s)`, link });
+            }
+            if (found) {
+                console.log(`✅ SKU ${sku}: Found product with matching SKU`);
+                resolve({ enabled: true, message: `Found product with matching SKU`, link });
+                return;
+            } else if (actualProducts.length > 0) {
+                // Fallback: found products but none matched SKU exactly
+                console.log(`❌ SKU ${sku}: No exact match for SKU in search results`);
+                resolve({ enabled: false, message: "No exact match for SKU in search results", link: null });
                 return;
             }
         }
         // Check if we're on a direct product page
         if (window.location.href.includes('/product/') || 
             document.querySelector('.product-view, .product-detail, .catalog-product-view')) {
-            // Use current URL as the product link
-            let link = window.location.href;
-            console.log(`✅ SKU ${sku}: Direct product page found`);
-            resolve({ enabled: true, message: "Direct product page found", link });
+            // Only use current URL as the product link if the SKU is present in the URL, product details text, or innerHTML
+            let link = null;
+            const urlLower = window.location.href.toLowerCase();
+            const skuLower = sku.toLowerCase();
+            let found = false;
+            if (urlLower.includes(skuLower)) {
+                found = true;
+            } else {
+                const productDetailEl = document.querySelector('.product-view, .product-detail, .catalog-product-view');
+                if (productDetailEl) {
+                    if (productDetailEl.textContent.toLowerCase().includes(skuLower)) {
+                        found = true;
+                    } else if (productDetailEl.innerHTML.toLowerCase().includes(skuLower)) {
+                        found = true;
+                    }
+                } else if (document.body.textContent.toLowerCase().includes(skuLower)) {
+                    found = true;
+                } else if (document.body.innerHTML.toLowerCase().includes(skuLower)) {
+                    found = true;
+                }
+            }
+            if (found) {
+                link = window.location.href;
+                console.log(`✅ SKU ${sku}: Direct product page found`);
+                resolve({ enabled: true, message: "Direct product page found", link });
+            } else {
+                // SKU not found on this product page
+                console.log(`❌ SKU ${sku}: No results found on direct product page`);
+                resolve({ enabled: false, message: "No results found", link: null });
+            }
             return;
         }
         // Look for product grid or listing containers
@@ -436,6 +482,7 @@ function showResultsModal(results) {
         </div>
         <div style="margin-top:18px; text-align:center;">
             <button id="downloadCSVBtn" style="background:#007bff; color:white; border:none; padding:10px 22px; border-radius:4px; cursor:pointer; font-size:16px; margin-right:10px;">Download CSV</button>
+            <button id="checkOtherSKUsBtn" style="background:#28a745; color:white; border:none; padding:10px 22px; border-radius:4px; cursor:pointer; font-size:16px; margin-right:10px;">Check Other SKUs</button>
             <button id="closeResultsModalBtn" style="background:#6c757d; color:white; border:none; padding:10px 22px; border-radius:4px; cursor:pointer; font-size:16px;">Close</button>
         </div>
     `;
@@ -446,6 +493,11 @@ function showResultsModal(results) {
     // Download CSV handler
     document.getElementById('downloadCSVBtn').onclick = function() {
         downloadResultsCSV(results);
+    };
+    // Add handler for Check Other SKUs
+    document.getElementById('checkOtherSKUsBtn').onclick = function() {
+        backdrop.remove();
+        setTimeout(() => checkSKUs(), 200); // slight delay to avoid modal stacking
     };
     // Close modal handler
     document.getElementById('closeResultsModalBtn').onclick = function() {
